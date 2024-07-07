@@ -1,0 +1,6 @@
+@patika_cohorts_HostAddress = http://localhost:5120
+
+GET {{patika_cohorts_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
