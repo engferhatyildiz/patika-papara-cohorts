@@ -1,52 +1,48 @@
 ﻿using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using patika_cohorts.Data;
+using patika_cohorts.Attributes;
 using patika_cohorts.Models;
+using patika_cohorts.Services;
+
+
+namespace patika_cohorts.Controllers;
 
 [Route("api/[controller]")]
 [ApiController]
+[Authorize]
 public class AccountsController : ControllerBase
 {
-    private readonly BankingContext _context;
+    private readonly IAccountService _accountService;
 
-    public AccountsController(BankingContext context)
+    public AccountsController(IAccountService accountService)
     {
-        _context = context;
-
-        if (_context.Accounts.Count() == 0)
-        {
-            // Örnek bir hesap ekleyelim
-            _context.Accounts.Add(new Account { AccountNumber = "123456", Owner = "John Doe", Balance = 1000 });
-            _context.SaveChanges();
-        }
+        _accountService = accountService;
     }
 
     [HttpGet]
     public async Task<ActionResult<IEnumerable<Account>>> GetAccounts()
     {
-        return await _context.Accounts.ToListAsync();
+        var accounts = await _accountService.GetAccountsAsync();
+        return Ok(accounts);
     }
 
     [HttpGet("{id}")]
     public async Task<ActionResult<Account>> GetAccount(int id)
     {
-        var account = await _context.Accounts.FindAsync(id);
+        var account = await _accountService.GetAccountByIdAsync(id);
 
         if (account == null)
         {
             return NotFound();
         }
 
-        return account;
+        return Ok(account);
     }
 
     [HttpPost]
     public async Task<ActionResult<Account>> PostAccount(Account account)
     {
-        _context.Accounts.Add(account);
-        await _context.SaveChangesAsync();
-
-        return CreatedAtAction(nameof(GetAccount), new { id = account.Id }, account);
+        var createdAccount = await _accountService.CreateAccountAsync(account);
+        return CreatedAtAction(nameof(GetAccount), new { id = createdAccount.Id }, createdAccount);
     }
 
     [HttpPut("{id}")]
@@ -57,24 +53,18 @@ public class AccountsController : ControllerBase
             return BadRequest();
         }
 
-        _context.Entry(account).State = EntityState.Modified;
-        await _context.SaveChangesAsync();
-
+        await _accountService.UpdateAccountAsync(account);
         return NoContent();
     }
 
     [HttpDelete("{id}")]
     public async Task<IActionResult> DeleteAccount(int id)
     {
-        var account = await _context.Accounts.FindAsync(id);
-
-        if (account == null)
+        var deleted = await _accountService.DeleteAccountAsync(id);
+        if (!deleted)
         {
             return NotFound();
         }
-
-        _context.Accounts.Remove(account);
-        await _context.SaveChangesAsync();
 
         return NoContent();
     }
@@ -82,7 +72,7 @@ public class AccountsController : ControllerBase
     [HttpPost("{id}/deposit")]
     public async Task<IActionResult> Deposit(int id, [FromBody] decimal amount)
     {
-        var account = await _context.Accounts.FindAsync(id);
+        var account = await _accountService.GetAccountByIdAsync(id);
 
         if (account == null)
         {
@@ -90,15 +80,24 @@ public class AccountsController : ControllerBase
         }
 
         account.Balance += amount;
-        await _context.SaveChangesAsync();
 
+        // Transaction oluşturma
+        var transaction = new Transaction
+        {
+            AccountId = id,
+            Amount = amount,
+            TransactionType = "Deposit",
+            Date = DateTime.UtcNow
+        };
+
+        await _accountService.UpdateAccountAsync(account);
         return NoContent();
     }
 
     [HttpPost("{id}/withdraw")]
     public async Task<IActionResult> Withdraw(int id, [FromBody] decimal amount)
     {
-        var account = await _context.Accounts.FindAsync(id);
+        var account = await _accountService.GetAccountByIdAsync(id);
 
         if (account == null)
         {
@@ -111,8 +110,17 @@ public class AccountsController : ControllerBase
         }
 
         account.Balance -= amount;
-        await _context.SaveChangesAsync();
 
+        // Transaction oluşturma
+        var transaction = new Transaction
+        {
+            AccountId = id,
+            Amount = amount,
+            TransactionType = "Withdraw",
+            Date = DateTime.UtcNow
+        };
+
+        await _accountService.UpdateAccountAsync(account);
         return NoContent();
     }
 }
